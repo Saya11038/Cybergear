@@ -14,6 +14,7 @@ index_max_current = "1870"
 index_dict = {
     "run_mode" : "0570",
     "iq_ref" : "0670",
+    "id_ref" : "0770",
     "spd_ref" : "0a70",
     "limit_torque" : "0b70",
     "cur_kp" : "1070",
@@ -462,6 +463,47 @@ class Cybergear:
         # self.get_motor_state(received_data)
 
 
+    def current_control(self, iq, id = 0.0):
+
+        bin_num = frame_write_param << 24 | self.master << 8 | self.motor #2進数のまま結合
+        bin_num = bin_num << 3 | 0b100 #3bit左にずらし、右端を100にする
+        #print(hex(bin_num))
+        hex_str = hex(bin_num)[2:] #真ん中のデータ、16進数のstr
+
+        hex_iq_param = struct.unpack('!I', struct.pack('!f', iq))[0]
+        hex_iq_param = reverse_hex(format(hex_iq_param, "08x"))
+        #print(hex_angle_param)
+
+        hex_id_param = struct.unpack('!I', struct.pack('!f', id))[0]
+        hex_id_param = reverse_hex(format(hex_id_param, "08x"))
+        #print(hex_speed_param)
+
+        target_iq_hex = frame_head + hex_str + "08" + index_dict["iq_ref"] + "0000" + hex_iq_param + frame_tail
+        target_id_hex = frame_head + hex_str + "08" + index_dict["id_ref"] + "0000" + hex_id_param + frame_tail
+
+        ser.write(bytes.fromhex(target_iq_hex))
+        ser.flush()
+        print(target_iq_hex)
+
+        data = ser.read_until(expected=b'\r\n')
+        data = int.from_bytes(data, "little")
+        received_data = reverse_hex("0"+hex(data)[2:])
+        print(">>" + received_data)
+
+        self.get_motor_state(received_data)
+
+        ser.write(bytes.fromhex(target_id_hex))
+        ser.flush()
+        print(target_id_hex)
+
+        data = ser.read_until(expected=b'\r\n')
+        data = int.from_bytes(data, "little")
+        received_data = reverse_hex("0"+hex(data)[2:])
+        print(">>" + received_data)
+
+        self.get_motor_state(received_data)
+
+
 
 #入力された整数値を2進数の数値に変える関数
 def int_to_bin(num_deci):
@@ -512,8 +554,8 @@ def reverse_hex(hex_string):
     return result
 
 
-def linear_mapping(data, min_num = 0, max_num = 65535, min_data = 0, max_data = 65535):
-    return (data - min_data) / (max_data - min_data) * (max_num - min_num) + min_num
+def linear_mapping(data, min_num = 0.0, max_num = 65535.0, min_data = 0.0, max_data = 65535.0):
+    return (data - min_data + 1.0) / (max_data - min_data + 1.0) * (max_num - min_num) + min_num
 
 
 def hex_to_float(hex_str):
@@ -568,29 +610,31 @@ motor_1 = Cybergear(253, 127)
 
 motor_1.power_on()
 
-motor_1.set_run_mode("location")
+motor_1.set_run_mode("current")
 
 motor_1.enable_motor()
 
 motor_1.homing_mode()
 
-motor_1.read_param(index_angle)
+#motor_1.read_param(index_dict["mechVel"])
 
 #motor_1.motion_control(3.0, 3.0, 3.0, 10.0, 1.0)
 
 #time.sleep(5)
 
-motor_1.position_control(0, 3.0)
+motor_1.current_control(0.3)
 #speed_control(master_CANID, motor_CANID, 3.0, 20.0)
 
-time.sleep(1)
+time.sleep(10)
 
 #position_control(master_CANID, motor_CANID, 6.0, 4.0)
 #speed_control(master_CANID, motor_CANID, -3.0, 20.0)
 
 # time.sleep(1)
 
-motor_1.read_param(index_angle)
+#motor_1.read_param(index_dict["mechVel"])
+
+motor_1.current_control(-0.3)
 
 time.sleep(5)
 
