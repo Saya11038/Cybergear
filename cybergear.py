@@ -606,15 +606,20 @@ run_mode_position = '41 54 90 07 eb fc 08 05 70 00 00 01 00 00 00 0d 0a'
 ser = serial.Serial('COM3', 921600, timeout = 2.0)
 
 
-motor_1 = Cybergear(253, 127)
+motor_1 = Cybergear(253, 126)
+motor_2 = Cybergear(253, 127)
 
 motor_1.power_on()
+motor_2.power_on()
 
 motor_1.set_run_mode("current")
+motor_2.set_run_mode("current")
 
 motor_1.enable_motor()
+motor_2.enable_motor()
 
 motor_1.homing_mode()
+motor_2.homing_mode()
 
 #motor_1.read_param(index_dict["mechVel"])
 
@@ -623,6 +628,7 @@ motor_1.homing_mode()
 #time.sleep(5)
 
 motor_1.current_control(0.3)
+motor_2.current_control(0.3)
 #speed_control(master_CANID, motor_CANID, 3.0, 20.0)
 
 time.sleep(10)
@@ -635,6 +641,7 @@ time.sleep(10)
 #motor_1.read_param(index_dict["mechVel"])
 
 motor_1.current_control(-0.3)
+motor_2.current_control(-0.3)
 
 time.sleep(5)
 
@@ -642,6 +649,7 @@ time.sleep(5)
 # get_motor_state(data, master_CANID, motor_CANID)
 
 motor_1.stop_motor()
+motor_2.stop_motor()
 
 
 
