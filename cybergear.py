@@ -2,6 +2,7 @@ import serial
 import time
 import struct
 import math
+import pandas as pd
 
 frame_head = "4154" #hex_str
 frame_tail = "0d0a" #hex_str
@@ -52,6 +53,7 @@ frame_homing_mode = 0b00000110
 frame_motion_control = 0b00000001
 frame_power_on = 0b00010011
 frame_get_device = 0b00000000
+frame_set_canid = 0b00000110
 
 
 class Cybergear:
@@ -212,8 +214,8 @@ class Cybergear:
         #print(hex(bin_num))
         hex_str = hex(bin_num)[2:] #真ん中のデータ、16進数のstr
 
-        ser.flushInput()
-        ser.flushOutput()
+        # ser.flushInput()
+        # ser.flushOutput()
 
         read_param = frame_head + hex_str + "08" + index + "000000000000" + frame_tail
         ser.write(bytes.fromhex(read_param))
@@ -503,6 +505,97 @@ class Cybergear:
 
         self.get_motor_state(received_data)
 
+    
+    def get_motor_angle(self, received_data):
+
+        # status = int(received_data[4:12], 16) >> 3
+
+        # frame_type = status >> 24
+
+        # if(frame_type != 2):
+        #     print("Received data Error")
+        #     return 1
+
+        # motor_can_id = status >> 8
+        # motor_can_id = bin(motor_can_id)[-8:]
+        # motor_can_id = int(motor_can_id, 2)
+
+        # under_voltage = status >> 16
+        # under_voltage = bin(under_voltage)[-1:]
+        # under_voltage = int(under_voltage, 2)
+
+        # over_current = status >> 17
+        # over_current = bin(over_current)[-1:]
+        # over_current = int(over_current, 2)
+
+        # over_temp = status >> 18
+        # over_temp = bin(over_temp)[-1:]
+        # over_temp = int(over_temp, 2)
+
+        # magnetic_encoding_failure = status >> 19
+        # magnetic_encoding_failure = bin(magnetic_encoding_failure)[-1:]
+        # magnetic_encoding_failure = int(magnetic_encoding_failure, 2)
+
+        # HALL_encoding_failure = status >> 20
+        # HALL_encoding_failure = bin(HALL_encoding_failure)[-1:]
+        # HALL_encoding_failure = int(HALL_encoding_failure, 2)
+
+        # not_calibrated = status >> 21
+        # not_calibrated = bin(not_calibrated)[-1:]
+        # not_calibrated = int(not_calibrated, 2)
+
+        # #print("Motor ID: ", motor_can_id)
+
+        # if(under_voltage == 1):
+        #     print("Under Voltage Fault")
+        # if(over_current == 1):
+        #     print("Over Current")
+        # if(over_temp == 1):
+        #     print("Over Temperature")
+        # if(magnetic_encoding_failure == 1):
+        #     print("Magnetic Encoding Failure")
+        # if(HALL_encoding_failure == 1):
+        #     print("HALL Encoding Failure")
+        # if(not_calibrated == 1):
+        #     print("Not Calibrated")
+
+        current_angle = int(received_data[14:18], 16)
+        # current_angle_vel = int(received_data[18:22], 16)
+        # current_torque = int(received_data[22:26], 16)
+        # current_temp = int(received_data[26:30], 16)
+
+        angle = linear_mapping(current_angle, -4*math.pi, 4*math.pi)
+        # angle_vel = linear_mapping(current_angle_vel, -30.0, 30.0)
+        # torque = linear_mapping(current_torque, -12.0, 12.0)
+        # temp = current_temp / 10.0
+
+        # print("Angle:", angle, "rad")
+        # print("Angle Velocity:", angle_vel, "rad/s")
+        # print("Torque:", torque, "Nm")
+        # print("Temperature:", temp, "℃")
+
+        self.angle = angle
+
+
+    def update_state(self):
+
+        bin_num = frame_set_canid << 24 | self.motor << 16 | self.master << 8 | self.motor #2進数のまま結合
+        bin_num = bin_num << 3 | 0b100 #3bit左にずらし、右端を100にする
+        # print(hex(bin_num))
+        hex_str = hex(bin_num)[2:]
+        hex_can = frame_head + hex_str + "00" + frame_tail
+        print(hex_can)
+
+        ser.write(bytes.fromhex(hex_can))
+        ser.flush()
+
+        data = ser.read_until(expected=b'\r\n')
+        data = int.from_bytes(data, "little")
+        received_data = reverse_hex("0"+hex(data)[2:])
+        print(">>" + received_data)
+
+        self.get_motor_angle(received_data)
+
 
 
 #入力された整数値を2進数の数値に変える関数
@@ -566,135 +659,82 @@ def hex_to_float(hex_str):
     return float_num
 
 
+# 指定された秒数motor_arrayに格納されたモーターの状態をcsvに記録する
+def upload_to_csv(motor_array, seconds):
 
-forward = '41 54 90 07 eb fc 08 05 70 00 00 07 01 95 54 0d 0a'
-stop = '41 54 90 07 eb fc 08 05 70 00 00 00 00 00 00 0d 0a'
+    start_time = time.time()
 
-halt = '41 54 a0 07 eb fc 08 00 00 00 00 00 00 00 00 0d 0a'
+    file_path = 'output.csv'
+    df = pd.read_csv(file_path)
 
-start_position_control_1 = '41 54 90 07 eb fc 08 05 70 00 00 04 00 00 00 0d 0a'
-start_position_control_2 = '41 54 18 07 eb fc 08 00 00 00 00 00 00 00 00 0d 0a'
+    while time.time() - start_time < seconds:
 
-run_mode_position = '41 54 90 07 eb fc 08 05 70 00 00 01 00 00 00 0d 0a'
+        new_data = {}
+        num = 1
 
-#enable_motor = '41541807ebfc0800000000000000000d0a'
-#stop_motor = '41 54 20 07 eb fc 08 00 00 00 00 00 00 00 00 0d 0a'
+        for i in motor_array:
+            i.update_state()
+            new_data[str(num)] = i.angle
+            num += 1
 
-# ser.write(bytes.fromhex(forward))
+        # データを指定した列に追加
+        df = pd.concat([df, pd.DataFrame([new_data])], ignore_index=True)
 
-# time.sleep(10)
+        # 更新したデータフレームをCSVに書き込む
+        df.to_csv(file_path, index=False)
 
 
-# ser.write(bytes.fromhex(stop))
-
-# a = '1A'
-# print(bytes.fromhex(stop))
-
-# ser.write(bytes.fromhex(enable_motor))
-
-# # #position_control(10, 10)
-
-# time.sleep(10)
-
-#ser.write(bytes.fromhex(stop_motor))
-# frame_id_bin_str = format(frame_enable_motor, "08b")
-# print(frame_id_bin_str)
-
-#'41 54 00 07 ea 44 01 00 0d 0a'
 
 # # シリアルポートとボーレートを設定
 ser = serial.Serial('COM3', 921600, timeout = 2.0)
 
 
-motor_1 = Cybergear(253, 126)
+motor_1 = Cybergear(253, 125)
 motor_2 = Cybergear(253, 127)
+motor_3 = Cybergear(253, 126)
+
+Motor = [motor_3, motor_2, motor_1]
 
 motor_1.power_on()
 motor_2.power_on()
+motor_3.power_on()
 
-motor_1.set_run_mode("current")
-motor_2.set_run_mode("current")
+motor_1.set_run_mode("speed")
+motor_2.set_run_mode("location")
+motor_3.set_run_mode("location")
 
 motor_1.enable_motor()
 motor_2.enable_motor()
+motor_3.enable_motor()
 
 motor_1.homing_mode()
 motor_2.homing_mode()
+motor_3.homing_mode()
 
-#motor_1.read_param(index_dict["mechVel"])
+motor_1.speed_control(3.0, 2.0)
+motor_2.position_control(6.0, 1.0)
+motor_3.position_control(-3.14, 2.0)
+
 
 #motor_1.motion_control(3.0, 3.0, 3.0, 10.0, 1.0)
 
-#time.sleep(5)
 
-motor_1.current_control(0.3)
-motor_2.current_control(0.3)
-#speed_control(master_CANID, motor_CANID, 3.0, 20.0)
+# motor_1.current_control(0.3)
+# motor_2.current_control(0.3)
 
-time.sleep(10)
-
-#position_control(master_CANID, motor_CANID, 6.0, 4.0)
-#speed_control(master_CANID, motor_CANID, -3.0, 20.0)
 
 # time.sleep(1)
 
 #motor_1.read_param(index_dict["mechVel"])
 
-motor_1.current_control(-0.3)
-motor_2.current_control(-0.3)
+# motor_1.current_control(-0.3)
+# motor_2.current_control(-0.3)
 
-time.sleep(5)
+# time.sleep(5)
 
-# data = "41541403ffec0880007ff07fff01390d0a"
-# get_motor_state(data, master_CANID, motor_CANID)
+
+upload_to_csv(Motor, 10)
 
 motor_1.stop_motor()
 motor_2.stop_motor()
-
-
-
-
-# def decimal_to_float_binary(decimal_value):
-#     # 浮動小数点数に変換
-#     float_value = float(decimal_value)
-#     # 浮動小数点数をバイナリデータに変換
-#     binary_data = struct.pack('f', float_value)
-#     # バイナリデータを16進数文字列に変換
-#     hex_str = binary_data.hex()
-#     # 16進数文字列を2進数文字列に変換
-#     binary_str = bin(int(hex_str, 16))[2:]
-#     return binary_str
-
-# # テスト用の10進数の値
-# decimal_value = 3.14
-
-# # 浮動小数点数の2進数表現を取得
-# binary_str = decimal_to_float_binary(decimal_value)
-
-# # 結果の表示
-# print("浮動小数点数の2進数表現:", binary_str)
-
-
-# i = bin(128)
-# print(i)
-# deci = int(i, 2)
-# print(deci)
-
-# i = 15
-# print(bin(int_to_bin(i)))
-
-
-# 0.1を23ビットの2進数に変換する例
-# decimal_fraction = 0.1
-# binary_fraction = decimal_to_binary_fraction(decimal_fraction)
-# print(bin(binary_fraction))
-
-
-# target_angle = 3.0
-# # hex_value = struct.unpack('!I', struct.pack('!f', float_value))[0]
-# # print(type(hex_value))
-# # print(f"Hex value of 3.0: {hex(hex_value)}")
-
-# hex_angle_param = struct.unpack('!I', struct.pack('!f', target_angle))[0]
-# hex_angle_param = reverse_hex(format(hex_angle_param, "08x"))
-# print(hex_angle_param)
+motor_3.stop_motor()
