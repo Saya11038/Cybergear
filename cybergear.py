@@ -3,6 +3,7 @@ import time
 import struct
 import math
 import pandas as pd
+import os
 
 frame_head = "4154" #hex_str
 frame_tail = "0d0a" #hex_str
@@ -207,6 +208,7 @@ class Cybergear:
         self.get_motor_state(received_data)
 
 
+    # あまり検証できてないが正確な値が取れるのは"loc_ref"ぐらい。使用非推奨
     def read_param(self, index):
 
         bin_num = frame_read_param << 24 | self.master << 8 | self.motor #2進数のまま結合
@@ -329,7 +331,7 @@ class Cybergear:
 
         self.angle = angle
 
-
+    # read_param()と同様使用非推奨
     def get_single_param(self, received_data):
         
         can_id = int(received_data[4:12], 16) >> 3
@@ -389,6 +391,7 @@ class Cybergear:
         self.get_motor_state(received_data)
 
 
+    # 使用非推奨。位置制御はposition_control()でできる。
     def motion_control(self, torque, angle, velocity, kp, kd):
 
         torque_param = int(linear_mapping(torque, min_data=-12.0, max_data=12.0))
@@ -506,6 +509,7 @@ class Cybergear:
         self.get_motor_state(received_data)
 
     
+    # 繰り返し高速化のため最低限だけを残した
     def get_motor_angle(self, received_data):
 
         # status = int(received_data[4:12], 16) >> 3
@@ -665,7 +669,13 @@ def upload_to_csv(motor_array, seconds):
     start_time = time.time()
 
     file_path = 'output.csv'
-    df = pd.read_csv(file_path)
+
+    try:
+        df = pd.read_csv(file_path)
+    except (FileNotFoundError, pd.errors.EmptyDataError):
+        # ファイルが存在しない場合、空のデータフレームを作成
+        df = pd.DataFrame(columns=['1', '2', '3'])  # ヘッダーを指定
+
 
     while time.time() - start_time < seconds:
 
@@ -693,15 +703,15 @@ motor_1 = Cybergear(253, 125)
 motor_2 = Cybergear(253, 127)
 motor_3 = Cybergear(253, 126)
 
-Motor = [motor_3, motor_2, motor_1]
+Motor = [motor_1, motor_2, motor_3]
 
 motor_1.power_on()
 motor_2.power_on()
 motor_3.power_on()
 
-motor_1.set_run_mode("speed")
-motor_2.set_run_mode("location")
-motor_3.set_run_mode("location")
+motor_1.set_run_mode("current")
+motor_2.set_run_mode("current")
+motor_3.set_run_mode("current")
 
 motor_1.enable_motor()
 motor_2.enable_motor()
@@ -711,9 +721,25 @@ motor_1.homing_mode()
 motor_2.homing_mode()
 motor_3.homing_mode()
 
-motor_1.speed_control(3.0, 2.0)
-motor_2.position_control(6.0, 1.0)
-motor_3.position_control(-3.14, 2.0)
+# motor_1.position_control(1.0, 1.0)
+# # motor_1.speed_control(3.0, 2.0)
+# 
+# motor_2.position_control(6.28, 1.5)
+# motor_3.position_control(1.0, 1.0)
+
+motor_1.current_control(0.0, 0.0)
+motor_2.current_control(0.0, 0.0)
+motor_3.current_control(0.0, 0.0)
+
+# time.sleep(10)
+
+# motor_2.homing_mode()
+# motor_2.position_control(0.0, 1.5)
+
+# time.sleep(10)
+
+# motor_2.set_run_mode("current")
+# motor_2.current_control(0.0, 0.0)
 
 
 #motor_1.motion_control(3.0, 3.0, 3.0, 10.0, 1.0)
@@ -733,7 +759,7 @@ motor_3.position_control(-3.14, 2.0)
 # time.sleep(5)
 
 
-upload_to_csv(Motor, 10)
+upload_to_csv(Motor, 15)
 
 motor_1.stop_motor()
 motor_2.stop_motor()
