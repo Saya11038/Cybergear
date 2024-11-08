@@ -3,7 +3,6 @@ import time
 import struct
 import math
 import pandas as pd
-import os
 
 frame_head = "4154" #hex_str
 frame_tail = "0d0a" #hex_str
@@ -43,27 +42,32 @@ run_mode = {
 }
 
 
-master_CANID = 0b0000000011111101 #bin_num
-motor_CANID = 0b01111111 #bin_num
+frame_enable_motor = 3
+frame_stop_motor = 4
+frame_read_param = 17
+frame_write_param = 18
+frame_homing_mode = 6
+frame_motion_control = 1
+frame_power_on = 19
+frame_get_device = 0
+frame_set_canid = 7
 
-frame_enable_motor = 0b00000011
-frame_stop_motor = 0b00000100
-frame_read_param = 0b00010001
-frame_write_param = 0b00010010
-frame_homing_mode = 0b00000110
-frame_motion_control = 0b00000001
-frame_power_on = 0b00010011
-frame_get_device = 0b00000000
-frame_set_canid = 0b00000110
+
+ser = serial.Serial('COM3', 921600, timeout = 2.0)
 
 
 class Cybergear:
 
 
-    def __init__(self, master_can, motor_can):
-        self.master = int_to_bin(master_can)
-        self.motor = int_to_bin(motor_can)
+    def __init__(self, master_can, motor_can, torque_diff_max=1.0, torque_diff_min=0.5):
+        self.master = master_can
+        self.motor = motor_can
         self.angle = 0.0
+        self.torque_before = 0.0
+        self.torque = 0.0
+        self.torque_gap = 0.0
+        self.torque_diff_max = torque_diff_max
+        self.torque_diff_min = torque_diff_min
 
 
     def enable_motor(self):
@@ -71,7 +75,8 @@ class Cybergear:
         bin_num = frame_enable_motor << 24 | self.master << 8 | self.motor #2進数のまま結合
         bin_num = bin_num << 3 | 0b100 #3bit左にずらし、右端を100にする
         #print(hex(bin_num))
-        hex_str = hex(bin_num)[2:]
+        # hex_str = hex(bin_num)[2:]
+        hex_str = format(bin_num, "08x")
         hex_can = frame_head + hex_str + "080000000000000000" + frame_tail
         print(hex_can)
 
@@ -91,7 +96,8 @@ class Cybergear:
         bin_num = frame_stop_motor << 24 | self.master << 8 | self.motor #2進数のまま結合
         bin_num = bin_num << 3 | 0b100 #3bit左にずらし、右端を100にする
         #print(hex(bin_num))
-        hex_str = hex(bin_num)[2:]
+        # hex_str = hex(bin_num)[2:]
+        hex_str = format(bin_num, "08x")
         hex_can = frame_head + hex_str + "080000000000000000" + frame_tail
         print(hex_can)
 
@@ -111,7 +117,8 @@ class Cybergear:
         bin_num = frame_write_param << 24 | self.master << 8 | self.motor #2進数のまま結合
         bin_num = bin_num << 3 | 0b100 #3bit左にずらし、右端を100にする
         #print(hex(bin_num))
-        hex_str = hex(bin_num)[2:] #真ん中のデータ、16進数のstr
+        # hex_str = hex(bin_num)[2:] #真ん中のデータ、16進数のstr
+        hex_str = format(bin_num, "08x")
 
         hex_angle_param = struct.unpack('!I', struct.pack('!f', target_angle))[0]
         hex_angle_param = reverse_hex(format(hex_angle_param, "08x"))
@@ -126,23 +133,23 @@ class Cybergear:
 
         ser.write(bytes.fromhex(target_speed_hex))
         ser.flush()
-        print(target_speed_hex)
+        # print(target_speed_hex)
 
         data = ser.read_until(expected=b'\r\n')
         data = int.from_bytes(data, "little")
         received_data = reverse_hex("0"+hex(data)[2:])
-        print(">>" + received_data)
+        # print(">>" + received_data)
 
         self.get_motor_state(received_data)
 
         ser.write(bytes.fromhex(target_angle_hex))
         ser.flush()
-        print(target_angle_hex)
+        # print(target_angle_hex)
 
         data = ser.read_until(expected=b'\r\n')
         data = int.from_bytes(data, "little")
         received_data = reverse_hex("0"+hex(data)[2:])
-        print(">>" + received_data)
+        # print(">>" + received_data)
 
         self.get_motor_state(received_data)
 
@@ -152,7 +159,8 @@ class Cybergear:
         bin_num = frame_homing_mode << 24 | self.master << 8 | self.motor #2進数のまま結合
         bin_num = bin_num << 3 | 0b100 #3bit左にずらし、右端を100にする
         #print(hex(bin_num))
-        hex_str = hex(bin_num)[2:]
+        # hex_str = hex(bin_num)[2:]
+        hex_str = format(bin_num, "08x")
         hex_can = frame_head + hex_str + "080100000000000000" + frame_tail
         print(hex_can)
 
@@ -172,7 +180,8 @@ class Cybergear:
         bin_num = frame_write_param << 24 | self.master << 8 | self.motor #2進数のまま結合
         bin_num = bin_num << 3 | 0b100 #3bit左にずらし、右端を100にする
         #print(hex(bin_num))
-        hex_str = hex(bin_num)[2:] #真ん中のデータ、16進数のstr
+        # hex_str = hex(bin_num)[2:] #真ん中のデータ、16進数のstr
+        hex_str = format(bin_num, "08x")
 
         hex_speed_param = struct.unpack('!I', struct.pack('!f', target_speed))[0]
         hex_speed_param = reverse_hex(format(hex_speed_param, "08x"))
@@ -186,79 +195,26 @@ class Cybergear:
         max_current_hex = frame_head + hex_str + "08" + index_max_current + "0000" + hex_max_current_param + frame_tail
 
         ser.write(bytes.fromhex(max_current_hex))
-        print(max_current_hex)
+        # print(max_current_hex)
         ser.flush()
 
         data = ser.read_until(expected=b'\r\n')
         data = int.from_bytes(data, "little")
         received_data = reverse_hex("0"+hex(data)[2:])
-        print(">>" + received_data)
+        # print(">>" + received_data)
 
         self.get_motor_state(received_data)
 
         ser.write(bytes.fromhex(target_speed_hex))
-        print(target_speed_hex)
+        # print(target_speed_hex)
         ser.flush()
 
         data = ser.read_until(expected=b'\r\n')
         data = int.from_bytes(data, "little")
         received_data = reverse_hex("0"+hex(data)[2:])
-        print(">>" + received_data)
+        # print(">>" + received_data)
 
         self.get_motor_state(received_data)
-
-
-    # あまり検証できてないが正確な値が取れるのは"loc_ref"ぐらい。使用非推奨
-    def read_param(self, index):
-
-        bin_num = frame_read_param << 24 | self.master << 8 | self.motor #2進数のまま結合
-        bin_num = bin_num << 3 | 0b100 #3bit左にずらし、右端を100にする
-        #print(hex(bin_num))
-        hex_str = hex(bin_num)[2:] #真ん中のデータ、16進数のstr
-
-        # ser.flushInput()
-        # ser.flushOutput()
-
-        read_param = frame_head + hex_str + "08" + index + "000000000000" + frame_tail
-        ser.write(bytes.fromhex(read_param))
-        ser.flush()
-        print(read_param)
-
-        count = 0
-
-        while True:
-
-            data = ser.read_until(expected=b'\r\n')
-            # if msg is not start with AT, it is not a valid msg
-            counter = 0
-            while not data.startswith(b'AT'):
-                print("not start with AT received data:", data)
-                data = ser.read_until(expected=b'\r\n')
-                counter += 1
-                if counter > 3:
-                    return 1
-            
-            #print(data)
-            data = int.from_bytes(data, "little")
-            #print(data)
-            received_data = reverse_hex("0"+hex(data)[2:])
-            print(">>" + received_data)
-
-            type_of_data = int(received_data[4:12], 16) >> 3
-            #print(type_of_data)
-
-            frame_type = type_of_data >> 24
-            print(frame_type)
-        
-            if(frame_type == 17):
-                self.get_single_param(received_data)
-                return 0
-            else:
-                count += 1
-            
-            if count > 3:
-                print("Error")
-                return 1
 
 
     def get_motor_state(self, received_data):
@@ -299,7 +255,7 @@ class Cybergear:
         not_calibrated = bin(not_calibrated)[-1:]
         not_calibrated = int(not_calibrated, 2)
 
-        print("Motor ID: ", motor_can_id)
+        # print("Motor ID: ", motor_can_id)
 
         if(under_voltage == 1):
             print("Under Voltage Fault")
@@ -324,45 +280,15 @@ class Cybergear:
         torque = linear_mapping(current_torque, -12.0, 12.0)
         temp = current_temp / 10.0
 
-        print("Angle:", angle, "rad")
-        print("Angle Velocity:", angle_vel, "rad/s")
-        print("Torque:", torque, "Nm")
-        print("Temperature:", temp, "℃")
+        # print("Angle:", angle, "rad")
+        # print("Angle Velocity:", angle_vel, "rad/s")
+        # print("Torque:", torque, "Nm")
+        # print("Temperature:", temp, "℃")
 
         self.angle = angle
-
-    # read_param()と同様使用非推奨
-    def get_single_param(self, received_data):
-        
-        can_id = int(received_data[4:12], 16) >> 3
-
-        motor_can_id = can_id >> 8
-        motor_can_id = bin(motor_can_id)[-8:]
-        motor_can_id = int(motor_can_id, 2)
-
-        print("Motor ID: ", motor_can_id)
-
-        index = received_data[14:18]
-        data = received_data[22:30]
-        data = reverse_hex(data)
-        print(data)
-
-        if(index == index_dict["run_mode"]):
-            print("Run_mode")
-            return 1
-        
-        if(index == index_dict["rotation"]):
-            print("Rotation")
-            return 1
-        
-        for key, value in index_dict.items():
-            if(value == index):
-                param = hex_to_float(data)
-                print(key, ":", param)
-                return 0
-        
-        print("Error")
-        return 1
+        self.torque_before = self.torque
+        self.torque = torque
+        self.torque_gap = abs(self.torque - self.torque_before)
 
 
     def set_run_mode(self, mode):
@@ -370,7 +296,8 @@ class Cybergear:
         bin_num = frame_write_param << 24 | self.master << 8 | self.motor #2進数のまま結合
         bin_num = bin_num << 3 | 0b100 #3bit左にずらし、右端を100にする
         #print(hex(bin_num))
-        hex_str = hex(bin_num)[2:] #真ん中のデータ、16進数のstr
+        # hex_str = hex(bin_num)[2:] #真ん中のデータ、16進数のstr
+        hex_str = format(bin_num, "08x")
 
         for key in run_mode:
             if(key == mode):
@@ -378,7 +305,7 @@ class Cybergear:
                 break
         
         hex_can = frame_head + hex_str + "0805700000" + "0" + str(mode_data) + "000000" + frame_tail
-        print(hex_can)
+        # print(hex_can)
 
         ser.write(bytes.fromhex(hex_can))
         ser.flush()
@@ -386,40 +313,7 @@ class Cybergear:
         data = ser.read_until(expected=b'\r\n')
         data = int.from_bytes(data, "little")
         received_data = reverse_hex("0"+hex(data)[2:])
-        print(">>" + received_data)
-
-        self.get_motor_state(received_data)
-
-
-    # 使用非推奨。位置制御はposition_control()でできる。
-    def motion_control(self, torque, angle, velocity, kp, kd):
-
-        torque_param = int(linear_mapping(torque, min_data=-12.0, max_data=12.0))
-        target_angle = int(linear_mapping(angle, min_data=-4*math.pi, max_data=4*math.pi))
-        target_velocity = int(linear_mapping(velocity, min_data=-30.0, max_data=30.0))
-        kp_param = int(linear_mapping(kp, min_data=0.0, max_data=500.0))
-        kd_param = int(linear_mapping(kd, min_data=0.0, max_data=5.0))
-
-        bin_num = frame_motion_control << 24 | self.master << 8 | self.motor #2進数のまま結合 int_to_bin(torque_param) << 16 |
-        bin_num = bin_num << 3 | 0b100 #3bit左にずらし、右端を100にする
-        #print(hex(bin_num))
-        hex_str = hex(bin_num)[2:]
-
-        hex_angle = hex(target_angle)[2:]
-        hex_velocity = hex(target_velocity)[2:]
-        hex_kp = hex(kp_param)[2:]
-        hex_kd = hex(kd_param)[2:]
-
-        hex_can = frame_head + hex_str + "08" + hex_angle + hex_velocity + hex_kp + hex_kd + frame_tail
-        print(hex_can)
-
-        ser.write(bytes.fromhex(hex_can))
-        ser.flush()
-
-        data = ser.read_until(expected=b'\r\n')
-        data = int.from_bytes(data, "little")
-        received_data = reverse_hex("0"+hex(data)[2:])
-        print(">>" + received_data)
+        # print(">>" + received_data)
 
         self.get_motor_state(received_data)
 
@@ -453,7 +347,8 @@ class Cybergear:
         bin_num = frame_power_on << 24 | self.master << 8 | self.motor #2進数のまま結合
         bin_num = bin_num << 3 | 0b100 #3bit左にずらし、右端を100にする
         #print(hex(bin_num))
-        hex_str = hex(bin_num)[2:] #真ん中のデータ、16進数のstr
+        # hex_str = hex(bin_num)[2:] #真ん中のデータ、16進数のstr
+        hex_str = format(bin_num, "08x")
         hex_can = frame_head + hex_str + "084066313130333103" + frame_tail
         print(hex_can)
 
@@ -473,7 +368,8 @@ class Cybergear:
         bin_num = frame_write_param << 24 | self.master << 8 | self.motor #2進数のまま結合
         bin_num = bin_num << 3 | 0b100 #3bit左にずらし、右端を100にする
         #print(hex(bin_num))
-        hex_str = hex(bin_num)[2:] #真ん中のデータ、16進数のstr
+        # hex_str = hex(bin_num)[2:] #真ん中のデータ、16進数のstr
+        hex_str = format(bin_num, "08x")
 
         hex_iq_param = struct.unpack('!I', struct.pack('!f', iq))[0]
         hex_iq_param = reverse_hex(format(hex_iq_param, "08x"))
@@ -508,87 +404,30 @@ class Cybergear:
 
         self.get_motor_state(received_data)
 
-    
-    # 繰り返し高速化のため最低限だけを残した
+
+    # 繰り返し高速化のためget_motor_state()の最低限だけを残した
     def get_motor_angle(self, received_data):
 
-        # status = int(received_data[4:12], 16) >> 3
-
-        # frame_type = status >> 24
-
-        # if(frame_type != 2):
-        #     print("Received data Error")
-        #     return 1
-
-        # motor_can_id = status >> 8
-        # motor_can_id = bin(motor_can_id)[-8:]
-        # motor_can_id = int(motor_can_id, 2)
-
-        # under_voltage = status >> 16
-        # under_voltage = bin(under_voltage)[-1:]
-        # under_voltage = int(under_voltage, 2)
-
-        # over_current = status >> 17
-        # over_current = bin(over_current)[-1:]
-        # over_current = int(over_current, 2)
-
-        # over_temp = status >> 18
-        # over_temp = bin(over_temp)[-1:]
-        # over_temp = int(over_temp, 2)
-
-        # magnetic_encoding_failure = status >> 19
-        # magnetic_encoding_failure = bin(magnetic_encoding_failure)[-1:]
-        # magnetic_encoding_failure = int(magnetic_encoding_failure, 2)
-
-        # HALL_encoding_failure = status >> 20
-        # HALL_encoding_failure = bin(HALL_encoding_failure)[-1:]
-        # HALL_encoding_failure = int(HALL_encoding_failure, 2)
-
-        # not_calibrated = status >> 21
-        # not_calibrated = bin(not_calibrated)[-1:]
-        # not_calibrated = int(not_calibrated, 2)
-
-        # #print("Motor ID: ", motor_can_id)
-
-        # if(under_voltage == 1):
-        #     print("Under Voltage Fault")
-        # if(over_current == 1):
-        #     print("Over Current")
-        # if(over_temp == 1):
-        #     print("Over Temperature")
-        # if(magnetic_encoding_failure == 1):
-        #     print("Magnetic Encoding Failure")
-        # if(HALL_encoding_failure == 1):
-        #     print("HALL Encoding Failure")
-        # if(not_calibrated == 1):
-        #     print("Not Calibrated")
-
         current_angle = int(received_data[14:18], 16)
-        # current_angle_vel = int(received_data[18:22], 16)
-        # current_torque = int(received_data[22:26], 16)
-        # current_temp = int(received_data[26:30], 16)
-
         angle = linear_mapping(current_angle, -4*math.pi, 4*math.pi)
-        # angle_vel = linear_mapping(current_angle_vel, -30.0, 30.0)
-        # torque = linear_mapping(current_torque, -12.0, 12.0)
-        # temp = current_temp / 10.0
-
-        # print("Angle:", angle, "rad")
-        # print("Angle Velocity:", angle_vel, "rad/s")
-        # print("Torque:", torque, "Nm")
-        # print("Temperature:", temp, "℃")
-
         self.angle = angle
+
+        current_torque = int(received_data[22:26], 16)
+        torque = linear_mapping(current_torque, -12.0, 12.0)
+        self.torque_before = self.torque
+        self.torque = torque
+        self.torque_gap = abs(self.torque - self.torque_before)
 
 
     def update_state(self):
 
-        bin_num = frame_set_canid << 24 | self.motor << 16 | self.master << 8 | self.motor #2進数のまま結合
+        bin_num = frame_homing_mode << 24 | self.motor << 16 | self.master << 8 | self.motor #2進数のまま結合
         bin_num = bin_num << 3 | 0b100 #3bit左にずらし、右端を100にする
         # print(hex(bin_num))
-        hex_str = hex(bin_num)[2:]
+        # hex_str = hex(bin_num)[2:]
+        hex_str = format(bin_num, "08x")
         hex_can = frame_head + hex_str + "00" + frame_tail
-        print(hex_can)
+        # print(hex_can)
 
         ser.write(bytes.fromhex(hex_can))
         ser.flush()
@@ -596,33 +435,88 @@ class Cybergear:
         data = ser.read_until(expected=b'\r\n')
         data = int.from_bytes(data, "little")
         received_data = reverse_hex("0"+hex(data)[2:])
-        print(">>" + received_data)
+        # print(">>" + received_data)
 
         self.get_motor_angle(received_data)
 
+    
+    # CANIDを変更する関数
+    def reset_canid(self, new_id):
+
+        bin_num = frame_set_canid << 24 | new_id << 16 | self.master << 8 | self.motor #2進数のまま結合
+        bin_num = bin_num << 3 | 0b100 #3bit左にずらし、右端を100にする
+        # print(hex(bin_num))
+        # hex_str = hex(bin_num)[2:]
+        hex_str = format(bin_num, "08x")
+        hex_can = frame_head + hex_str + "08" + "369a313130333109" + frame_tail
+        print(hex_can)
+
+        ser.write(bytes.fromhex(hex_can))
+        ser.flush()
+
+        # data = ser.read_until(expected=b'\r\n')
+        # data = int.from_bytes(data, "little")
+        # received_data = reverse_hex("0"+hex(data)[2:])
+        # print(">>" + received_data)
+
+        self.motor = new_id
+
+        # self.get_motor_angle(received_data)
 
 
-#入力された整数値を2進数の数値に変える関数
-def int_to_bin(num_deci):
+        bin_num = frame_power_on << 24 | 0b11111111 << 8 | self.motor #2進数のまま結合
+        bin_num = bin_num << 3 | 0b100 #3bit左にずらし、右端を100にする
+        # print(hex(bin_num))
+        # hex_str = hex(bin_num)[2:]
+        hex_str = format(bin_num, "08x")
+        hex_can = frame_head + hex_str + "08" + "369a313130333109" + frame_tail
+        print(hex_can)
 
-    num = 0
-    num_bin = 0b0
+        ser.write(bytes.fromhex(hex_can))
+        ser.flush()
 
-    while num_deci > 1:
-        if num_deci % 2 == 0:
-            num_deci = int(num_deci / 2)
-            num_bin = num_bin | 0b0 << num
-        else:
-            num_deci = int(num_deci / 2)
-            num_bin = num_bin | 0b1 << num
-        num += 1
+        # data = ser.read_until(expected=b'\r\n')
+        # data = int.from_bytes(data, "little")
+        # received_data = reverse_hex("0"+hex(data)[2:])
+        # print(">>" + received_data)
 
-    if num_deci == 0:
-        num_bin = num_bin | 0b0 << num
-    elif num_deci == 1:
-        num_bin = num_bin | 0b1 << num
+        # self.get_motor_angle(received_data)
 
-    return num_bin
+
+    # 連続でデータを送って動きを制御するときに使う関数
+    def motion_control(self, angle, velocity, kp, kd, torque = 0.0):
+
+        torque_param = int(linear_mapping(torque, min_data=-12.0, max_data=12.0))
+        target_angle = int(linear_mapping(angle, min_data=-4*math.pi, max_data=4*math.pi))
+        target_velocity = int(linear_mapping(velocity, min_data=-30.0, max_data=30.0))
+        kp_param = int(linear_mapping(kp, min_data=0.0, max_data=500.0))
+        kd_param = int(linear_mapping(kd, min_data=0.0, max_data=5.0))
+
+        bin_num = frame_motion_control << 24 | torque_param << 8 | self.motor #2進数のまま結合
+        bin_num = bin_num << 3 | 0b100 #3bit左にずらし、右端を100にする
+        # print(hex(bin_num))
+        # hex_str = hex(bin_num)[2:]
+        hex_str = format(bin_num, "08x")
+        # print(hex_str)
+
+        hex_angle = format(target_angle, "04x")
+        hex_velocity = format(target_velocity, "04x")
+        hex_kp = format(kp_param, "04x")
+        hex_kd = format(kd_param, "04x")
+
+        hex_can = frame_head + hex_str + "08" + hex_angle + hex_velocity + hex_kp + hex_kd + frame_tail
+        # print(hex_can)
+
+        ser.write(bytes.fromhex(hex_can))
+        ser.flush()
+
+        data = ser.read_until(expected=b'\r\n')
+        data = int.from_bytes(data, "little")
+        received_data = reverse_hex("0"+hex(data)[2:])
+        # print(">>" + received_data)
+
+        self.get_motor_state(received_data)
+
 
 
 #小数の小数部分を23bitの２進数の数値に変換
@@ -652,7 +546,8 @@ def reverse_hex(hex_string):
 
 
 def linear_mapping(data, min_num = 0.0, max_num = 65535.0, min_data = 0.0, max_data = 65535.0):
-    return (data - min_data + 1.0) / (max_data - min_data + 1.0) * (max_num - min_num) + min_num
+    # return (data - min_data + 1.0) / (max_data - min_data + 1.0) * (max_num - min_num) + min_num
+    return (data - min_data) / (max_data - min_data) * (max_num - min_num) + min_num
 
 
 def hex_to_float(hex_str):
@@ -664,22 +559,22 @@ def hex_to_float(hex_str):
 
 
 # 指定された秒数motor_arrayに格納されたモーターの状態をcsvに記録する
-def upload_to_csv(motor_array, seconds):
+def upload_to_csv(motor_array, seconds, file_path):
 
     start_time = time.time()
-
-    file_path = 'output.csv'
 
     try:
         df = pd.read_csv(file_path)
     except (FileNotFoundError, pd.errors.EmptyDataError):
         # ファイルが存在しない場合、空のデータフレームを作成
-        df = pd.DataFrame(columns=['1', '2', '3'])  # ヘッダーを指定
+        df = pd.DataFrame(columns=['time','1', '2', '3', '4'])  # ヘッダーを指定
 
+    collected_data = []
 
     while time.time() - start_time < seconds:
 
         new_data = {}
+        new_data['time'] = time.time() - start_time
         num = 1
 
         for i in motor_array:
@@ -687,49 +582,154 @@ def upload_to_csv(motor_array, seconds):
             new_data[str(num)] = i.angle
             num += 1
 
-        # データを指定した列に追加
-        df = pd.concat([df, pd.DataFrame([new_data])], ignore_index=True)
+        collected_data.append(new_data)
 
-        # 更新したデータフレームをCSVに書き込む
-        df.to_csv(file_path, index=False)
+    # データを指定した列に追加
+    df = pd.concat([df, pd.DataFrame(collected_data)], ignore_index=True)
 
-
-
-# # シリアルポートとボーレートを設定
-ser = serial.Serial('COM3', 921600, timeout = 2.0)
+    # 更新したデータフレームをCSVに書き込む
+    df.to_csv(file_path, index=False)
 
 
-motor_1 = Cybergear(253, 125)
-motor_2 = Cybergear(253, 127)
-motor_3 = Cybergear(253, 126)
+# 与えられたCSVファイルの動きを再現する
+def replicate(motor_array, file_path):
 
-Motor = [motor_1, motor_2, motor_3]
+    df = pd.read_csv(file_path)
+    data_list = df.values.tolist()
+    
+    for motor in motor_array:
+        motor.set_run_mode("location")
+        motor.enable_motor()
+
+    start_time = time.time()
+
+    for motor_list in data_list:
+        if time.time() - start_time > motor_list[0]:
+            continue
+        else:
+            num = 1
+            for motor in motor_array:
+                motor.position_control(motor_list[num], 8.0)
+                num += 1
+
+
+# 与えられたCSVファイルの動きを再現する。こっちの方が精度いい。
+def replicate_2(motor_array, file_path):
+
+    df = pd.read_csv(file_path)
+    data_list = df.values.tolist()
+    
+    for motor in motor_array:
+        motor.set_run_mode("motion_control")
+        motor.enable_motor()
+
+    start_time = time.time()
+
+    gap = 0
+    duration = 2
+    restart = False
+
+    for motor_list in data_list:
+        torque = False
+        if time.time() - gap - start_time > motor_list[0]:
+            continue
+        else:
+            num = 1
+            if restart:
+                restart_start = time.time()
+                for motor in motor_array:
+                    # motor.set_run_mode("speed")
+                    while abs(motor.angle - motor_list[num]) > 0.4:
+                        # motor.position_control(motor_list[num], 1.3)
+                        motor.motion_control(motor_list[num], 0.1, 0.6, 0.05, 0.5)
+                        # if motor.angle - motor_list[num] < 0:
+                        #     motor.speed_control(3.0, 1.0)
+                        # else:
+                        #     motor.speed_control(3.0, 1.0)
+                        print(motor.motor, "waiting...")
+                    # motor.set_run_mode("motion_control")
+                    # motor.motion_control(motor_list[num], 0.01, 3.0, 0.1)
+                    num += 1
+                # for motor in motor_array:
+                #     motor.set_run_mode("motion_control")
+                restart_end = time.time()
+                gap += restart_end - restart_start
+                restart = False
+                continue
+
+            for motor in motor_array:
+                motor.update_state()
+                print(motor.motor, motor.torque_gap)
+                if motor.torque_gap > motor.torque_diff_min and motor.torque_gap < motor.torque_diff_max:
+                    # print(motor.motor, motor.torque_gap)
+                    # motor.motion_control(motor_list[num], 0.01, 0.2, 0.01)
+                    torque = True
+                    break
+                else:
+                    motor.motion_control(motor_list[num], 0.01, 5.0, 0.5) # 4.5~6.0がちょうどいい？
+                    print("--")
+                num += 1
+
+                # motor.motion_control(motor_list[num], 0.01, 5.0, 0.5)
+                # num += 1
+            
+            if torque:
+                start = time.time()
+                while time.time() - start < duration:
+                    for motor in motor_array:
+                        # motor.set_run_mode("speed")
+                        # # motor.position_control(0.0, 1.0)
+                        # # motor.motion_control(0.0, 0.2, 0.3, 0.01)
+                        # while abs(motor.angle) > 0.2:
+                        #     if motor.angle > 0:
+                        #         motor.speed_control(-0.3, 1.5)
+                        #     else:
+                        #         motor.speed_control(0.3, 1.5)
+                        motor.set_run_mode("motion_control")
+                        motor.motion_control(0.0, 0.1, 0.5, 0.1, 0.3)
+                gap += duration
+                restart = True
+                print("reached 0")
+
+
+
+motor_1 = Cybergear(253, 125, 0.6, 0.45)
+motor_2 = Cybergear(253, 127, 2.0, 0.4)
+motor_3 = Cybergear(253, 126, 2.0, 0.45)
+motor_4 = Cybergear(253, 121, 1.3, 0.9)
+
+Motor = [motor_1, motor_2, motor_3, motor_4]
+path = 'output.csv'
+path_swing_1hz = "swing_1hz.csv"
+path_swing_1_5hz = "swing_1_5hz.csv"
+path_swing_1_8hz = "swing_1_8hz.csv"
+path_swing_2hz = "swing_2hz.csv"
+path_swing_1hz_2 = "swing_1hz_2.csv"
 
 motor_1.power_on()
 motor_2.power_on()
 motor_3.power_on()
+motor_4.power_on()
 
 motor_1.set_run_mode("current")
 motor_2.set_run_mode("current")
 motor_3.set_run_mode("current")
+motor_4.set_run_mode("current")
 
 motor_1.enable_motor()
 motor_2.enable_motor()
 motor_3.enable_motor()
+motor_4.enable_motor()
 
 motor_1.homing_mode()
 motor_2.homing_mode()
 motor_3.homing_mode()
-
-# motor_1.position_control(1.0, 1.0)
-# # motor_1.speed_control(3.0, 2.0)
-# 
-# motor_2.position_control(6.28, 1.5)
-# motor_3.position_control(1.0, 1.0)
+motor_4.homing_mode()
 
 motor_1.current_control(0.0, 0.0)
 motor_2.current_control(0.0, 0.0)
 motor_3.current_control(0.0, 0.0)
+motor_4.current_control(0.0, 0.0)
 
 # time.sleep(10)
 
@@ -759,8 +759,114 @@ motor_3.current_control(0.0, 0.0)
 # time.sleep(5)
 
 
-upload_to_csv(Motor, 15)
+# upload_to_csv(Motor, 10, path)
+
+replicate_2(Motor, path)
 
 motor_1.stop_motor()
 motor_2.stop_motor()
 motor_3.stop_motor()
+motor_4.stop_motor()
+
+
+
+
+
+
+
+# motor = Cybergear(253, 124)
+# motor.power_on()
+# motor.enable_motor()
+
+# motor.reset_canid(124)
+
+# motor.stop_motor()
+
+
+
+
+
+
+# motor = Cybergear(253, 127)
+
+# motor_array = [motor]
+# path = 'output.csv'
+
+# motor.power_on()
+# motor.set_run_mode("location")
+# motor.enable_motor()
+
+# motor.homing_mode()
+# motor.position_control(0.0, 1.0)
+
+# time.sleep(1)
+
+# motor.set_run_mode("current")
+# motor.enable_motor()
+
+# motor.current_control(0.0, 0.0)
+
+# upload_to_csv(motor_array, 10, path)
+
+# replicate(motor_array, path)
+
+# motor.stop_motor()
+
+
+
+
+
+
+# motor = Cybergear(253, 125)
+
+# motor.power_on()
+# motor.set_run_mode("motion_control")
+# motor.enable_motor()
+
+# motor.homing_mode()
+
+# motor.motion_control(2.0, 0.01, 3.0, 0.5)
+
+# time.sleep(10)
+
+# motor.stop_motor()
+
+
+# time.sleep(5)
+
+
+# motor = Cybergear(253, 121)
+
+# motor.power_on()
+# motor.set_run_mode("motion_control")
+# motor.enable_motor()
+
+# motor.homing_mode()
+
+# motor.motion_control(1.5, 0.0001, 0.5, 0.1, 0.0)
+
+# time.sleep(10)
+
+# motor.stop_motor()
+
+
+
+# motor = Cybergear(253, 125, 2.0, 0.4)
+
+# motor_array = [motor]
+
+# motor.power_on()
+# motor.set_run_mode("current")
+# motor.enable_motor()
+
+# motor.homing_mode()
+# motor.current_control(0.0, 0.0)
+
+# # motor.reset_canid(120)
+
+# # motor.update_state()
+
+# # upload_to_csv(motor_array, 10, path)
+# replicate_2(motor_array, path)
+
+# motor.stop_motor()
