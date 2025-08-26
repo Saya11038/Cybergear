@@ -54,7 +54,11 @@ frame_get_device = 0
 frame_set_canid = 7
 
 
+<<<<<<< HEAD
 ser = serial.Serial('/dev/ttyUSB0', 921600, timeout = 2.0)
+=======
+ser = serial.Serial('COM3', 921600, timeout = 0.5)
+>>>>>>> daff9e060ba9a53c4ed6c6c001c28da69d5a6457
 
 
 class Cybergear:
@@ -709,7 +713,9 @@ def replicate_2(motor_array, file_path):
                 print("reached 0")
 
 
+def detect_canid(master=253):
 
+<<<<<<< HEAD
 # motor_1 = Cybergear(253, 125, 0.6, 0.45)
 # motor_2 = Cybergear(253, 127, 2.0, 0.4)
 # motor_3 = Cybergear(253, 126, 2.0, 0.45)
@@ -728,10 +734,73 @@ def replicate_2(motor_array, file_path):
 # path_swing_2hz = "swing_2hz.csv"
 # path_swing_1hz_2 = "swing_1hz_2.csv"
 
+=======
+    id_min = 110
+    id_max = 127
+
+    ser.write(bytes.fromhex('41 54 2b 41 54 0d 0a'))
+    ser.flush()
+
+    data = ser.read_until(expected=b'\r\n')
+    print(data)
+    data = int.from_bytes(data, "little")
+    print(data)
+    received_data = reverse_hex("0"+hex(data)[2:])
+    print(">>" + received_data)
+
+    for motor in range(id_max, id_min-1, -1):
+
+        bin_num = master << 8 | motor #2進数のまま結合
+        bin_num = bin_num << 3 | 0b100 #3bit左にずらし、右端を100にする
+        #print(hex(bin_num))
+        hex_str = hex(bin_num)[2:] #真ん中のデータ、16進数のstr
+        hex_can = frame_head + "000" + hex_str + "0100" + frame_tail
+        # print(hex_can)
+
+        ser.write(bytes.fromhex(hex_can))
+        ser.flush()
+
+        data = ser.read_until(expected=b'\r\n')
+        if not data:
+            continue
+        else:
+            print("CAN ID", motor, "detected")
+        # data = int.from_bytes(data, "little")
+        # received_data = reverse_hex("0"+hex(data)[2:])
+        # print(">>" + received_data)
+
+# detect_canid()
+
+motor = Cybergear(253, 120)
+motor.power_on()
+motor.set_run_mode("current")
+motor.enable_motor()
+start = time.time()
+for i in range(1000):
+    motor.current_control(0.3, 0.0)
+stop = time.time()
+print(stop-start)
+motor.stop_motor()
+
+# motor_1 = Cybergear(253, 122, 0.6, 0.45)
+# motor_2 = Cybergear(253, 127, 2.0, 0.4)
+# motor_3 = Cybergear(253, 126, 2.0, 0.45)
+# motor_4 = Cybergear(253, 121, 1.3, 0.9)
+
+# Motor = [motor_1, motor_2, motor_3, motor_4]
+# path = 'output.csv'
+# path_swing_1hz = "swing_1hz.csv"
+# path_swing_1_5hz = "swing_1_5hz.csv"
+# path_swing_1_8hz = "swing_1_8hz.csv"
+# path_swing_2hz = "swing_2hz.csv"
+# path_swing_1hz_2 = "swing_1hz_2.csv"
+
+>>>>>>> daff9e060ba9a53c4ed6c6c001c28da69d5a6457
 # motor_1.power_on()
 # motor_2.power_on()
 # motor_3.power_on()
 # motor_4.power_on()
+<<<<<<< HEAD
 
 # motor_1.set_run_mode("current")
 # motor_2.set_run_mode("current")
@@ -752,6 +821,31 @@ def replicate_2(motor_array, file_path):
 # motor_2.current_control(0.0, 0.0)
 # motor_3.current_control(0.0, 0.0)
 # motor_4.current_control(0.0, 0.0)
+=======
+
+# motor_1.set_run_mode("current")
+# motor_2.set_run_mode("current")
+# motor_3.set_run_mode("current")
+# motor_4.set_run_mode("current")
+
+# motor_1.enable_motor()
+# motor_2.enable_motor()
+# motor_3.enable_motor()
+# motor_4.enable_motor()
+
+# motor_1.homing_mode()
+# motor_2.homing_mode()
+# motor_3.homing_mode()
+# motor_4.homing_mode()
+
+# motor_1.current_control(0.0, 0.0)
+# motor_2.current_control(0.0, 0.0)
+# motor_3.current_control(0.0, 0.0)
+# motor_4.current_control(0.0, 0.0)
+
+
+
+>>>>>>> daff9e060ba9a53c4ed6c6c001c28da69d5a6457
 
 # time.sleep(10)
 
@@ -783,12 +877,12 @@ def replicate_2(motor_array, file_path):
 
 # upload_to_csv(Motor, 10, path)
 
-replicate_2(Motor, path)
+# replicate_2(Motor, path)
 
-motor_1.stop_motor()
-motor_2.stop_motor()
-motor_3.stop_motor()
-motor_4.stop_motor()
+# motor_1.stop_motor()
+# motor_2.stop_motor()
+# motor_3.stop_motor()
+# motor_4.stop_motor()
 
 
 
