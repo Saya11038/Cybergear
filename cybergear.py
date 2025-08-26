@@ -3,6 +3,7 @@ import time
 import struct
 import math
 import pandas as pd
+import math
 
 frame_head = "4154" #hex_str
 frame_tail = "0d0a" #hex_str
@@ -53,13 +54,13 @@ frame_get_device = 0
 frame_set_canid = 7
 
 
-ser = serial.Serial('COM3', 921600, timeout = 2.0)
+ser = serial.Serial('/dev/ttyUSB0', 921600, timeout = 2.0)
 
 
 class Cybergear:
 
 
-    def __init__(self, master_can, motor_can, torque_diff_max=1.0, torque_diff_min=0.5):
+    def __init__(self, master_can, motor_can, torque_diff_max=1.0, torque_diff_min=0.5, torque_const=0.0):
         self.master = master_can
         self.motor = motor_can
         self.angle = 0.0
@@ -68,6 +69,8 @@ class Cybergear:
         self.torque_gap = 0.0
         self.torque_diff_max = torque_diff_max
         self.torque_diff_min = torque_diff_min
+        self.torque_const = torque_const
+        self.real_torque = self.torque - torque_const * self.angle
 
 
     def enable_motor(self):
@@ -289,6 +292,7 @@ class Cybergear:
         self.torque_before = self.torque
         self.torque = torque
         self.torque_gap = abs(self.torque - self.torque_before)
+        self.real_torque = self.torque - self.torque_const * self.angle
 
 
     def set_run_mode(self, mode):
@@ -417,6 +421,7 @@ class Cybergear:
         self.torque_before = self.torque
         self.torque = torque
         self.torque_gap = abs(self.torque - self.torque_before)
+        self.real_torque = self.torque - self.torque_const * self.angle
 
 
     def update_state(self):
@@ -625,6 +630,17 @@ def replicate_2(motor_array, file_path):
 
     start_time = time.time()
 
+    # for motor_list in data_list:
+    #     if time.time() - start_time > motor_list[0]:
+    #         continue
+    #     else:
+    #         num = 1
+    #         for motor in motor_array:
+    #             motor.motion_control(motor_list[num], 0.01, 5.0, 0.5, 1.0)
+    #             # print(motor.torque - 1.2 * math.sin(motor.angle))  125
+    #             print(motor.torque - 1.2 *math.sin(motor.angle))
+    #             num += 1
+
     gap = 0
     duration = 2
     restart = False
@@ -641,7 +657,7 @@ def replicate_2(motor_array, file_path):
                     # motor.set_run_mode("speed")
                     while abs(motor.angle - motor_list[num]) > 0.4:
                         # motor.position_control(motor_list[num], 1.3)
-                        motor.motion_control(motor_list[num], 0.1, 0.6, 0.05, 0.5)
+                        motor.motion_control(motor_list[num], 0.5, 0.6, 0.05, 1.0)
                         # if motor.angle - motor_list[num] < 0:
                         #     motor.speed_control(3.0, 1.0)
                         # else:
@@ -659,8 +675,9 @@ def replicate_2(motor_array, file_path):
 
             for motor in motor_array:
                 motor.update_state()
-                print(motor.motor, motor.torque_gap)
-                if motor.torque_gap > motor.torque_diff_min and motor.torque_gap < motor.torque_diff_max:
+                # print(motor.motor, motor.torque_gap)
+                print(motor.real_torque)
+                if abs(motor.real_torque) > 2.0:
                     # print(motor.motor, motor.torque_gap)
                     # motor.motion_control(motor_list[num], 0.01, 0.2, 0.01)
                     torque = True
@@ -693,43 +710,48 @@ def replicate_2(motor_array, file_path):
 
 
 
-motor_1 = Cybergear(253, 125, 0.6, 0.45)
-motor_2 = Cybergear(253, 127, 2.0, 0.4)
-motor_3 = Cybergear(253, 126, 2.0, 0.45)
-motor_4 = Cybergear(253, 121, 1.3, 0.9)
+# motor_1 = Cybergear(253, 125, 0.6, 0.45)
+# motor_2 = Cybergear(253, 127, 2.0, 0.4)
+# motor_3 = Cybergear(253, 126, 2.0, 0.45)
+# motor_4 = Cybergear(253, 121, 1.3, 0.9)
 
-Motor = [motor_1, motor_2, motor_3, motor_4]
-path = 'output.csv'
-path_swing_1hz = "swing_1hz.csv"
-path_swing_1_5hz = "swing_1_5hz.csv"
-path_swing_1_8hz = "swing_1_8hz.csv"
-path_swing_2hz = "swing_2hz.csv"
-path_swing_1hz_2 = "swing_1hz_2.csv"
+# motor_1 = Cybergear(253, 125, torque_const=1.2)
+# motor_2 = Cybergear(253, 127)
+# motor_3 = Cybergear(253, 126)
+# motor_4 = Cybergear(253, 121, torque_const=1.5)
 
-motor_1.power_on()
-motor_2.power_on()
-motor_3.power_on()
-motor_4.power_on()
+# Motor = [motor_4]
+# path = 'output_.csv'
+# path_swing_1hz = "swing_1hz.csv"
+# path_swing_1_5hz = "swing_1_5hz.csv"
+# path_swing_1_8hz = "swing_1_8hz.csv"
+# path_swing_2hz = "swing_2hz.csv"
+# path_swing_1hz_2 = "swing_1hz_2.csv"
 
-motor_1.set_run_mode("current")
-motor_2.set_run_mode("current")
-motor_3.set_run_mode("current")
-motor_4.set_run_mode("current")
+# motor_1.power_on()
+# motor_2.power_on()
+# motor_3.power_on()
+# motor_4.power_on()
 
-motor_1.enable_motor()
-motor_2.enable_motor()
-motor_3.enable_motor()
-motor_4.enable_motor()
+# motor_1.set_run_mode("current")
+# motor_2.set_run_mode("current")
+# motor_3.set_run_mode("current")
+# motor_4.set_run_mode("current")
 
-motor_1.homing_mode()
-motor_2.homing_mode()
-motor_3.homing_mode()
-motor_4.homing_mode()
+# motor_1.enable_motor()
+# motor_2.enable_motor()
+# motor_3.enable_motor()
+# motor_4.enable_motor()
 
-motor_1.current_control(0.0, 0.0)
-motor_2.current_control(0.0, 0.0)
-motor_3.current_control(0.0, 0.0)
-motor_4.current_control(0.0, 0.0)
+# motor_1.homing_mode()
+# motor_2.homing_mode()
+# motor_3.homing_mode()
+# motor_4.homing_mode()
+
+# motor_1.current_control(0.0, 0.0)
+# motor_2.current_control(0.0, 0.0)
+# motor_3.current_control(0.0, 0.0)
+# motor_4.current_control(0.0, 0.0)
 
 # time.sleep(10)
 
