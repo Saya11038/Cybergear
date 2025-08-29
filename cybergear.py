@@ -54,20 +54,20 @@ frame_get_device = 0
 frame_set_canid = 7
 
 
-<<<<<<< HEAD
 ser = serial.Serial('/dev/ttyUSB0', 921600, timeout = 2.0)
-=======
-ser = serial.Serial('COM3', 921600, timeout = 0.5)
->>>>>>> daff9e060ba9a53c4ed6c6c001c28da69d5a6457
 
 
 class Cybergear:
 
 
-    def __init__(self, master_can, motor_can, torque_diff_max=1.0, torque_diff_min=0.5, torque_const=0.0):
+    def __init__(self, master_can, motor_can, K_p = 0.0, K_d = 0.0, torque_diff_max=1.0, torque_diff_min=0.5, torque_const=0.0):
+
         self.master = master_can
         self.motor = motor_can
         self.angle = 0.0
+        self.K_p = K_p
+        self.K_d = K_d
+
         self.torque_before = 0.0
         self.torque = 0.0
         self.torque_gap = 0.0
@@ -449,7 +449,7 @@ class Cybergear:
         self.get_motor_angle(received_data)
 
     
-    # CANIDを変更する関数
+    # CANIDを変更する関数, 使えない
     def reset_canid(self, new_id):
 
         bin_num = frame_set_canid << 24 | new_id << 16 | self.master << 8 | self.motor #2進数のまま結合
@@ -493,7 +493,12 @@ class Cybergear:
 
 
     # 連続でデータを送って動きを制御するときに使う関数
-    def motion_control(self, angle, velocity, kp, kd, torque = 0.0):
+    def motion_control(self, angle, velocity, kp = 0.0, kd = 0.0, torque = 0.0):
+
+        # p, d 項の値が与えられなければ、最初に指定された値を使う
+        if kp == 0.0 and kd == 0.0:
+            kp = self.K_p
+            kd = self.K_d
 
         torque_param = int(linear_mapping(torque, min_data=-12.0, max_data=12.0))
         target_angle = int(linear_mapping(angle, min_data=-4*math.pi, max_data=4*math.pi))
@@ -600,7 +605,7 @@ def upload_to_csv(motor_array, seconds, file_path):
     df.to_csv(file_path, index=False)
 
 
-# 与えられたCSVファイルの動きを再現する
+# 与えられたCSVファイルの動きを再現する, location ver
 def replicate(motor_array, file_path):
 
     df = pd.read_csv(file_path)
@@ -622,8 +627,30 @@ def replicate(motor_array, file_path):
                 num += 1
 
 
-# 与えられたCSVファイルの動きを再現する。こっちの方が精度いい。
+# 与えられたCSVファイルの動きを再現する, motion_control ver, こっちの方が精度いい.
 def replicate_2(motor_array, file_path):
+
+    df = pd.read_csv(file_path)
+    data_list = df.values.tolist()
+    
+    for motor in motor_array:
+        motor.set_run_mode("motion_control")
+        motor.enable_motor()
+
+    start_time = time.time()
+
+    for motor_list in data_list:
+        if time.time() - start_time > motor_list[0]:
+            continue
+        else:
+            num = 1
+            for motor in motor_array:
+                motor.motion_control(motor_list[num], 0.1)
+                num += 1
+
+
+# 与えられたCSVファイルの動きを再現する, motion_control ver, 衝突したら動きをやめるようにしたいが, 未完成.
+def replicate_3(motor_array, file_path):
 
     df = pd.read_csv(file_path)
     data_list = df.values.tolist()
@@ -713,28 +740,9 @@ def replicate_2(motor_array, file_path):
                 print("reached 0")
 
 
+# 接続されている Cybergear の CAN ID を調べる関数
 def detect_canid(master=253):
 
-<<<<<<< HEAD
-# motor_1 = Cybergear(253, 125, 0.6, 0.45)
-# motor_2 = Cybergear(253, 127, 2.0, 0.4)
-# motor_3 = Cybergear(253, 126, 2.0, 0.45)
-# motor_4 = Cybergear(253, 121, 1.3, 0.9)
-
-# motor_1 = Cybergear(253, 125, torque_const=1.2)
-# motor_2 = Cybergear(253, 127)
-# motor_3 = Cybergear(253, 126)
-# motor_4 = Cybergear(253, 121, torque_const=1.5)
-
-# Motor = [motor_4]
-# path = 'output_.csv'
-# path_swing_1hz = "swing_1hz.csv"
-# path_swing_1_5hz = "swing_1_5hz.csv"
-# path_swing_1_8hz = "swing_1_8hz.csv"
-# path_swing_2hz = "swing_2hz.csv"
-# path_swing_1hz_2 = "swing_1hz_2.csv"
-
-=======
     id_min = 110
     id_max = 127
 
@@ -769,18 +777,18 @@ def detect_canid(master=253):
         # received_data = reverse_hex("0"+hex(data)[2:])
         # print(">>" + received_data)
 
-# detect_canid()
 
-motor = Cybergear(253, 120)
-motor.power_on()
-motor.set_run_mode("current")
-motor.enable_motor()
-start = time.time()
-for i in range(1000):
-    motor.current_control(0.3, 0.0)
-stop = time.time()
-print(stop-start)
-motor.stop_motor()
+detect_canid()
+
+# motor = Cybergear(253, 115)
+# motor.power_on()
+# motor.set_run_mode("current")
+# motor.enable_motor()
+# motor.homing_mode()
+# motor.set_run_mode("motion_control")
+# motor.motion_control(0.0, 0.5, 90.0, 1.0, 0.0)
+# time.sleep(10)
+# motor.stop_motor()
 
 # motor_1 = Cybergear(253, 122, 0.6, 0.45)
 # motor_2 = Cybergear(253, 127, 2.0, 0.4)
@@ -795,12 +803,10 @@ motor.stop_motor()
 # path_swing_2hz = "swing_2hz.csv"
 # path_swing_1hz_2 = "swing_1hz_2.csv"
 
->>>>>>> daff9e060ba9a53c4ed6c6c001c28da69d5a6457
 # motor_1.power_on()
 # motor_2.power_on()
 # motor_3.power_on()
 # motor_4.power_on()
-<<<<<<< HEAD
 
 # motor_1.set_run_mode("current")
 # motor_2.set_run_mode("current")
@@ -821,31 +827,6 @@ motor.stop_motor()
 # motor_2.current_control(0.0, 0.0)
 # motor_3.current_control(0.0, 0.0)
 # motor_4.current_control(0.0, 0.0)
-=======
-
-# motor_1.set_run_mode("current")
-# motor_2.set_run_mode("current")
-# motor_3.set_run_mode("current")
-# motor_4.set_run_mode("current")
-
-# motor_1.enable_motor()
-# motor_2.enable_motor()
-# motor_3.enable_motor()
-# motor_4.enable_motor()
-
-# motor_1.homing_mode()
-# motor_2.homing_mode()
-# motor_3.homing_mode()
-# motor_4.homing_mode()
-
-# motor_1.current_control(0.0, 0.0)
-# motor_2.current_control(0.0, 0.0)
-# motor_3.current_control(0.0, 0.0)
-# motor_4.current_control(0.0, 0.0)
-
-
-
->>>>>>> daff9e060ba9a53c4ed6c6c001c28da69d5a6457
 
 # time.sleep(10)
 
@@ -884,105 +865,3 @@ motor.stop_motor()
 # motor_3.stop_motor()
 # motor_4.stop_motor()
 
-
-
-
-
-
-
-# motor = Cybergear(253, 124)
-# motor.power_on()
-# motor.enable_motor()
-
-# motor.reset_canid(124)
-
-# motor.stop_motor()
-
-
-
-
-
-
-# motor = Cybergear(253, 127)
-
-# motor_array = [motor]
-# path = 'output.csv'
-
-# motor.power_on()
-# motor.set_run_mode("location")
-# motor.enable_motor()
-
-# motor.homing_mode()
-# motor.position_control(0.0, 1.0)
-
-# time.sleep(1)
-
-# motor.set_run_mode("current")
-# motor.enable_motor()
-
-# motor.current_control(0.0, 0.0)
-
-# upload_to_csv(motor_array, 10, path)
-
-# replicate(motor_array, path)
-
-# motor.stop_motor()
-
-
-
-
-
-
-# motor = Cybergear(253, 125)
-
-# motor.power_on()
-# motor.set_run_mode("motion_control")
-# motor.enable_motor()
-
-# motor.homing_mode()
-
-# motor.motion_control(2.0, 0.01, 3.0, 0.5)
-
-# time.sleep(10)
-
-# motor.stop_motor()
-
-
-# time.sleep(5)
-
-
-# motor = Cybergear(253, 121)
-
-# motor.power_on()
-# motor.set_run_mode("motion_control")
-# motor.enable_motor()
-
-# motor.homing_mode()
-
-# motor.motion_control(1.5, 0.0001, 0.5, 0.1, 0.0)
-
-# time.sleep(10)
-
-# motor.stop_motor()
-
-
-
-# motor = Cybergear(253, 125, 2.0, 0.4)
-
-# motor_array = [motor]
-
-# motor.power_on()
-# motor.set_run_mode("current")
-# motor.enable_motor()
-
-# motor.homing_mode()
-# motor.current_control(0.0, 0.0)
-
-# # motor.reset_canid(120)
-
-# # motor.update_state()
-
-# # upload_to_csv(motor_array, 10, path)
-# replicate_2(motor_array, path)
-
-# motor.stop_motor()
