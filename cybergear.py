@@ -575,13 +575,15 @@ def hex_to_float(hex_str):
 # 指定された秒数motor_arrayに格納されたモーターの状態をcsvに記録する
 def upload_to_csv(motor_array, seconds, file_path):
 
+    header = ['time'] + [str(motor.motor) for motor in motor_array]
+
     start_time = time.time()
 
     try:
         df = pd.read_csv(file_path)
     except (FileNotFoundError, pd.errors.EmptyDataError):
         # ファイルが存在しない場合、空のデータフレームを作成
-        df = pd.DataFrame(columns=['time','1', '2', '3', '4'])  # ヘッダーを指定
+        df = pd.DataFrame(columns=header)  # ヘッダーを指定
 
     collected_data = []
 
@@ -589,12 +591,10 @@ def upload_to_csv(motor_array, seconds, file_path):
 
         new_data = {}
         new_data['time'] = time.time() - start_time
-        num = 1
 
         for i in motor_array:
             i.update_state()
-            new_data[str(num)] = i.angle
-            num += 1
+            new_data[str(i.motor)] = i.angle
 
         collected_data.append(new_data)
 
